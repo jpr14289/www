@@ -1,0 +1,501 @@
+import pygame
+import random
+import os
+import time
+from datetime import datetime
+import urllib.request
+import io
+from PIL import Image
+
+# Initialize Pygame
+pygame.init()
+pygame.font.init()
+
+# Constants
+BLOCK_SIZE = 30
+GRID_WIDTH = 10
+GRID_HEIGHT = 20
+SIDEBAR_WIDTH = 200
+WINDOW_WIDTH = BLOCK_SIZE * GRID_WIDTH + SIDEBAR_WIDTH
+WINDOW_HEIGHT = BLOCK_SIZE * GRID_HEIGHT
+
+# Colors
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+CYAN = (0, 255, 255)
+YELLOW = (255, 255, 0)
+MAGENTA = (255, 0, 255)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+ORANGE = (255, 165, 0)
+GRAY = (128, 128, 128)
+LIGHT_GRAY = (192, 192, 192)
+PURPLE = (128, 0, 128)
+
+# Tetromino shapes
+SHAPES = [
+    [[1, 1, 1, 1]],  # I
+    [[1, 1], [1, 1]],  # O
+    [[1, 1, 1], [0, 1, 0]],  # T
+    [[1, 1, 1], [1, 0, 0]],  # L
+    [[1, 1, 1], [0, 0, 1]],  # J
+    [[1, 1, 0], [0, 1, 1]],  # S
+    [[0, 1, 1], [1, 1, 0]]   # Z
+]
+
+# Set up the game window
+screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+pygame.display.set_caption('Tetris Clone')
+
+# Font setup
+FONT = pygame.font.SysFont('Arial', 24)
+
+# Load profile image
+def load_profile_image():
+    try:
+        image_url = "https://media.licdn.com/dms/image/v2/D4E03AQHrpzNKZQtD0A/profile-displayphoto-shrink_200_200/B4EZYCn1T.G0AY-/0/1743800719404?e=2147483647&v=beta&t=QqdUnnaSpqTWzotgJ1ZKkil1H3ousGya5ieiphvkRJo"
+        urllib.request.urlretrieve(image_url, "profile.jpg")
+        image = pygame.image.load("profile.jpg")
+        # Scale for both block size and sidebar
+        block_image = pygame.transform.scale(image, (BLOCK_SIZE, BLOCK_SIZE))
+        sidebar_image = pygame.transform.scale(image, (SIDEBAR_WIDTH - 40, 100))
+        return block_image, sidebar_image
+    except Exception as e:
+        print(f"Failed to load profile image: {e}")
+        return None, None
+
+# Load Société Générale logo
+def load_sg_logo():
+    try:
+        image_url = "https://societeamission.com/wp-content/uploads/2020/04/logo-societe-generale2-e1436481313147.png"
+        urllib.request.urlretrieve(image_url, "sg_logo.png")
+        image = pygame.image.load("sg_logo.png")
+        return pygame.transform.scale(image, (BLOCK_SIZE, BLOCK_SIZE))
+    except Exception as e:
+        print(f"Failed to load SG logo: {e}")
+        # Create a fallback yellow surface
+        fallback = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE))
+        fallback.fill(YELLOW)
+        return fallback
+
+# Create gradient background for clock
+def create_gradient_background():
+    surface = pygame.Surface((SIDEBAR_WIDTH - 40, 60))
+    for y in range(60):
+        # Create a gradient from purple to blue
+        color = (
+            int(128 * (1 - y/60) + 0 * (y/60)),  # R
+            int(0 * (1 - y/60) + 0 * (y/60)),    # G
+            int(128 * (1 - y/60) + 255 * (y/60)) # B
+        )
+        pygame.draw.line(surface, color, (0, y), (SIDEBAR_WIDTH - 40, y))
+    
+    # Add some decorative elements
+    pygame.draw.circle(surface, WHITE, (20, 30), 10, 1)
+    pygame.draw.circle(surface, WHITE, (SIDEBAR_WIDTH - 60, 30), 10, 1)
+    
+    return surface
+
+# Create the background
+CLOCK_BG = create_gradient_background()
+
+# Create cat image
+def create_cat_image():
+    cat_surface = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
+    
+    # Draw a simple cat face
+    # Background (orange)
+    pygame.draw.rect(cat_surface, (255, 140, 0), (0, 0, BLOCK_SIZE, BLOCK_SIZE))
+    
+    # Eyes (black)
+    eye_radius = BLOCK_SIZE // 8
+    pygame.draw.circle(cat_surface, BLACK, (BLOCK_SIZE // 3, BLOCK_SIZE // 3), eye_radius)
+    pygame.draw.circle(cat_surface, BLACK, (2 * BLOCK_SIZE // 3, BLOCK_SIZE // 3), eye_radius)
+    
+    # Nose (pink)
+    nose_points = [(BLOCK_SIZE // 2, BLOCK_SIZE // 2),
+                  (BLOCK_SIZE // 2 - 3, BLOCK_SIZE // 2 + 3),
+                  (BLOCK_SIZE // 2 + 3, BLOCK_SIZE // 2 + 3)]
+    pygame.draw.polygon(cat_surface, (255, 192, 203), nose_points)
+    
+    # Mouth (black)
+    pygame.draw.line(cat_surface, BLACK, 
+                    (BLOCK_SIZE // 2, BLOCK_SIZE // 2 + 4),
+                    (BLOCK_SIZE // 2, BLOCK_SIZE // 2 + 8), 1)
+    pygame.draw.line(cat_surface, BLACK,
+                    (BLOCK_SIZE // 2, BLOCK_SIZE // 2 + 8),
+                    (BLOCK_SIZE // 3, BLOCK_SIZE // 2 + 6), 1)
+    pygame.draw.line(cat_surface, BLACK,
+                    (BLOCK_SIZE // 2, BLOCK_SIZE // 2 + 8),
+                    (2 * BLOCK_SIZE // 3, BLOCK_SIZE // 2 + 6), 1)
+    
+    # Ears (triangles)
+    pygame.draw.polygon(cat_surface, (200, 100, 0),
+                       [(2, 2), (BLOCK_SIZE // 3, 2), (BLOCK_SIZE // 4, BLOCK_SIZE // 4)])
+    pygame.draw.polygon(cat_surface, (200, 100, 0),
+                       [(BLOCK_SIZE - 2, 2), (2 * BLOCK_SIZE // 3, 2),
+                        (3 * BLOCK_SIZE // 4, BLOCK_SIZE // 4)])
+    
+    return cat_surface
+
+# Create the cat texture
+CAT_TEXTURE = create_cat_image()
+
+class Button:
+    def __init__(self, x, y, width, height, text, color):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.color = color
+        self.is_hovered = False
+
+    def draw(self, surface):
+        color = self.color if not self.is_hovered else tuple(min(c + 30, 255) for c in self.color)
+        pygame.draw.rect(surface, color, self.rect)
+        pygame.draw.rect(surface, WHITE, self.rect, 2)
+        
+        text_surface = FONT.render(self.text, True, WHITE)
+        text_rect = text_surface.get_rect(center=self.rect.center)
+        surface.blit(text_surface, text_rect)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            self.is_hovered = self.rect.collidepoint(event.pos)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if self.rect.collidepoint(event.pos):
+                return True
+        return False
+
+class Tetromino:
+    def __init__(self):
+        self.shape = random.choice(SHAPES)
+        self.color = random.choice([CYAN, YELLOW, MAGENTA, RED, GREEN, BLUE, ORANGE])
+        self.x = GRID_WIDTH // 2 - len(self.shape[0]) // 2
+        self.y = 0
+
+    def move(self, dx, dy):
+        self.x += dx
+        self.y += dy
+
+    def rotate(self):
+        self.shape = list(zip(*self.shape[::-1]))
+
+class Game:
+    def __init__(self):
+        self.grid = [[BLACK for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
+        self.current_piece = Tetromino()
+        self.game_over = False
+        self.clock = pygame.time.Clock()
+        self.autoplay = False
+        self.autoplay_button = Button(
+            WINDOW_WIDTH - SIDEBAR_WIDTH + 20,
+            20,
+            SIDEBAR_WIDTH - 40,
+            40,
+            "Autoplay: OFF",
+            BLUE
+        )
+        self.profile_button = Button(
+            WINDOW_WIDTH - SIDEBAR_WIDTH + 20,
+            150,
+            SIDEBAR_WIDTH - 40,
+            40,
+            "Profile: OFF",
+            PURPLE
+        )
+        self.show_profile = False
+        self.last_ai_move_time = 0
+        self.ai_move_delay = 100  # milliseconds between AI moves
+        self.cat_texture = CAT_TEXTURE
+        self.sg_logo = load_sg_logo()
+        # Clock setup
+        self.clock_font = pygame.font.SysFont('Arial', 48)
+        self.last_second = -1
+        self.clock_bg = CLOCK_BG
+        self.profile_block_image, self.profile_sidebar_image = load_profile_image()
+
+    def check_collision(self, piece, dx=0, dy=0):
+        for y, row in enumerate(piece.shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    new_x = piece.x + x + dx
+                    new_y = piece.y + y + dy
+                    if (new_x < 0 or new_x >= GRID_WIDTH or 
+                        new_y >= GRID_HEIGHT or 
+                        (new_y >= 0 and self.grid[new_y][new_x] != BLACK)):
+                        return True
+        return False
+
+    def merge_piece(self):
+        for y, row in enumerate(self.current_piece.shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    self.grid[self.current_piece.y + y][self.current_piece.x + x] = self.current_piece.color
+
+    def clear_lines(self):
+        lines_cleared = 0
+        y = GRID_HEIGHT - 1
+        while y >= 0:
+            if all(cell != BLACK for cell in self.grid[y]):
+                lines_cleared += 1
+                del self.grid[y]
+                self.grid.insert(0, [BLACK for _ in range(GRID_WIDTH)])
+            else:
+                y -= 1
+        return lines_cleared
+
+    def evaluate_position(self, x, rotation):
+        # Create a copy of the current piece for simulation
+        test_piece = Tetromino()
+        test_piece.shape = self.current_piece.shape
+        test_piece.x = self.current_piece.x
+        test_piece.y = self.current_piece.y
+        test_piece.color = self.current_piece.color
+        
+        # Apply rotation
+        for _ in range(rotation):
+            test_piece.shape = list(zip(*test_piece.shape[::-1]))
+        
+        # Move to target x
+        test_piece.x = x
+        
+        # If position is invalid, return worst score
+        if self.check_collision(test_piece):
+            return float('-inf')
+        
+        # Drop piece to bottom
+        while not self.check_collision(test_piece, dy=1):
+            test_piece.y += 1
+        
+        # Calculate score based on:
+        # 1. Height (lower is better)
+        # 2. Holes created (fewer is better)
+        # 3. Lines that would be cleared (more is better)
+        score = 0
+        
+        # Simulate placing the piece
+        test_grid = [row[:] for row in self.grid]
+        for y, row in enumerate(test_piece.shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    test_grid[test_piece.y + y][test_piece.x + x] = test_piece.color
+        
+        # Count holes and calculate aggregate height
+        holes = 0
+        agg_height = 0
+        for x in range(GRID_WIDTH):
+            found_block = False
+            height = 0
+            for y in range(GRID_HEIGHT):
+                if test_grid[y][x] != BLACK:
+                    found_block = True
+                    height = GRID_HEIGHT - y
+                elif found_block:
+                    holes += 1
+            agg_height += height
+        
+        score -= holes * 10  # Heavily penalize holes
+        score -= agg_height  # Penalize height
+        
+        return score
+
+    def find_best_move(self):
+        best_score = float('-inf')
+        best_move = (0, 0)  # (x, rotation)
+        
+        # Try all possible rotations and x positions
+        for rotation in range(4):  # Try all 4 possible rotations
+            piece_width = len(self.current_piece.shape[0])
+            for x in range(-2, GRID_WIDTH - piece_width + 3):  # Try all x positions with some margin
+                score = self.evaluate_position(x, rotation)
+                if score > best_score:
+                    best_score = score
+                    best_move = (x, rotation)
+        
+        return best_move
+
+    def make_ai_move(self):
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_ai_move_time < self.ai_move_delay:
+            return
+
+        target_x, target_rotation = self.find_best_move()
+        
+        # Rotate to target rotation
+        current_rotation = 0
+        while current_rotation < target_rotation:
+            rotated = Tetromino()
+            rotated.shape = list(zip(*self.current_piece.shape[::-1]))
+            rotated.x = self.current_piece.x
+            rotated.y = self.current_piece.y
+            if not self.check_collision(rotated):
+                self.current_piece.rotate()
+            current_rotation += 1
+        
+        # Move to target x
+        if self.current_piece.x < target_x:
+            if not self.check_collision(self.current_piece, dx=1):
+                self.current_piece.move(1, 0)
+        elif self.current_piece.x > target_x:
+            if not self.check_collision(self.current_piece, dx=-1):
+                self.current_piece.move(-1, 0)
+        
+        # Always try to move down
+        if not self.check_collision(self.current_piece, dy=1):
+            self.current_piece.move(0, 1)
+        
+        self.last_ai_move_time = current_time
+
+    def draw_clock(self, screen):
+        current_time = datetime.now()
+        time_str = current_time.strftime("%H:%M:%S")
+        
+        # Create a background for the clock
+        clock_surface = pygame.Surface((SIDEBAR_WIDTH - 40, 60))
+        
+        # Draw the gradient background
+        clock_surface.blit(self.clock_bg, (0, 0))
+        
+        # Add a slight darkening overlay to make text more readable
+        overlay = pygame.Surface((SIDEBAR_WIDTH - 40, 60))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(100)  # More transparent than before
+        clock_surface.blit(overlay, (0, 0))
+        
+        # Draw border with glow effect
+        for i in range(3):
+            pygame.draw.rect(clock_surface, (*LIGHT_GRAY, 255 - i*50), 
+                           (i, i, SIDEBAR_WIDTH - 40 - 2*i, 60 - 2*i), 1)
+        
+        # Render the time with shadow effect
+        shadow_surface = self.clock_font.render(time_str, True, BLACK)
+        time_surface = self.clock_font.render(time_str, True, WHITE)
+        
+        # Position for both shadow and main text
+        time_rect = time_surface.get_rect(center=(clock_surface.get_width() // 2, clock_surface.get_height() // 2))
+        shadow_rect = shadow_surface.get_rect(center=(clock_surface.get_width() // 2 + 2, clock_surface.get_height() // 2 + 2))
+        
+        # Draw shadow first, then main text
+        clock_surface.blit(shadow_surface, shadow_rect)
+        clock_surface.blit(time_surface, time_rect)
+        
+        # Draw the clock surface
+        screen.blit(clock_surface, (WINDOW_WIDTH - SIDEBAR_WIDTH + 20, 80))
+
+    def run(self):
+        fall_time = 0
+        fall_speed = 500  # milliseconds
+        
+        while not self.game_over:
+            fall_time += self.clock.get_rawtime()
+            self.clock.tick()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return
+                
+                # Handle autoplay button
+                if self.autoplay_button.handle_event(event):
+                    self.autoplay = not self.autoplay
+                    self.autoplay_button.text = f"Autoplay: {'ON' if self.autoplay else 'OFF'}"
+                
+                if self.profile_button.handle_event(event):
+                    self.show_profile = not self.show_profile
+                    self.profile_button.text = f"Profile: {'ON' if self.show_profile else 'OFF'}"
+                
+                if not self.autoplay and event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LEFT:
+                        if not self.check_collision(self.current_piece, dx=-1):
+                            self.current_piece.move(-1, 0)
+                    elif event.key == pygame.K_RIGHT:
+                        if not self.check_collision(self.current_piece, dx=1):
+                            self.current_piece.move(1, 0)
+                    elif event.key == pygame.K_DOWN:
+                        if not self.check_collision(self.current_piece, dy=1):
+                            self.current_piece.move(0, 1)
+                    elif event.key == pygame.K_UP:
+                        rotated = Tetromino()
+                        rotated.shape = list(zip(*self.current_piece.shape[::-1]))
+                        rotated.x = self.current_piece.x
+                        rotated.y = self.current_piece.y
+                        if not self.check_collision(rotated):
+                            self.current_piece.rotate()
+
+            if self.autoplay:
+                self.make_ai_move()
+
+            if fall_time >= fall_speed:
+                if not self.check_collision(self.current_piece, dy=1):
+                    self.current_piece.move(0, 1)
+                else:
+                    self.merge_piece()
+                    self.clear_lines()
+                    self.current_piece = Tetromino()
+                    if self.check_collision(self.current_piece):
+                        self.game_over = True
+                fall_time = 0
+
+            # Draw everything
+            screen.fill(BLACK)
+            
+            # Draw the grid
+            for y, row in enumerate(self.grid):
+                for x, color in enumerate(row):
+                    if color == BLACK:
+                        pygame.draw.rect(screen, BLACK,
+                                       (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 0)
+                    elif color == GREEN and self.cat_texture:
+                        screen.blit(self.cat_texture, (x * BLOCK_SIZE, y * BLOCK_SIZE))
+                    elif color == YELLOW and self.sg_logo:
+                        screen.blit(self.sg_logo, (x * BLOCK_SIZE, y * BLOCK_SIZE))
+                    elif color == RED:
+                        pygame.draw.rect(screen, RED,
+                                       (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 0)
+                    else:
+                        pygame.draw.rect(screen, color,
+                                       (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 0)
+                    pygame.draw.rect(screen, WHITE,
+                                   (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
+
+            # Draw the current piece
+            for y, row in enumerate(self.current_piece.shape):
+                for x, cell in enumerate(row):
+                    if cell:
+                        if self.current_piece.color == GREEN and self.cat_texture:
+                            screen.blit(self.cat_texture,
+                                      ((self.current_piece.x + x) * BLOCK_SIZE,
+                                       (self.current_piece.y + y) * BLOCK_SIZE))
+                        elif self.current_piece.color == YELLOW and self.sg_logo:
+                            screen.blit(self.sg_logo,
+                                      ((self.current_piece.x + x) * BLOCK_SIZE,
+                                       (self.current_piece.y + y) * BLOCK_SIZE))
+                        elif self.current_piece.color == RED and self.profile_block_image:
+                            screen.blit(self.profile_block_image,
+                                      ((self.current_piece.x + x) * BLOCK_SIZE,
+                                       (self.current_piece.y + y) * BLOCK_SIZE))
+                        else:
+                            pygame.draw.rect(screen, self.current_piece.color,
+                                           ((self.current_piece.x + x) * BLOCK_SIZE,
+                                            (self.current_piece.y + y) * BLOCK_SIZE,
+                                            BLOCK_SIZE, BLOCK_SIZE), 0)
+                        pygame.draw.rect(screen, WHITE,
+                                       ((self.current_piece.x + x) * BLOCK_SIZE,
+                                        (self.current_piece.y + y) * BLOCK_SIZE,
+                                        BLOCK_SIZE, BLOCK_SIZE), 1)
+
+            # Draw the sidebar
+            pygame.draw.rect(screen, GRAY, (WINDOW_WIDTH - SIDEBAR_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
+            self.autoplay_button.draw(screen)
+            self.draw_clock(screen)
+            self.profile_button.draw(screen)
+            
+            # Draw profile image if button is pressed and current piece is red
+            if self.show_profile and self.profile_sidebar_image and self.current_piece.color == RED:
+                screen.blit(self.profile_sidebar_image, (WINDOW_WIDTH - SIDEBAR_WIDTH + 20, 200))
+
+            pygame.display.update()
+
+if __name__ == "__main__":
+    game = Game()
+    game.run()
+    pygame.quit()
