@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fred the Painter Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { background: #f0f0f0; display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<audio id="bgMusic" loop>
+    <source src="8bit-music.mp3" type="audio/mpeg">
+</audio>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let score = 0;
+let lives = 3;
+let paintDrops = [];
+const dropFrequency = 1000; // milliseconds
+const dropSpeed = 3;
+
+// Fred character
+const fred = { width: 50, height: 50, x: canvas.width / 2 - 25, y: canvas.height - 60 };
+
+function startGame() {
+    document.getElementById('bgMusic').play();
+    setInterval(spawnPaintDrop, dropFrequency);
+    requestAnimationFrame(update);
+}
+
+function spawnPaintDrop() {
+    const x = Math.random() * (canvas.width - 20);
+    paintDrops.push({ x, y: 0, width: 20, height: 20 });
+}
+
+function update() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawFred();
+    drawPaintDrops();
+    updatePaintDrops();
+    checkCollisions();
+    drawScoreAndLives();
+    requestAnimationFrame(update);
+}
+
+function drawFred() {
+    ctx.fillStyle = 'blue';
+    ctx.fillRect(fred.x, fred.y, fred.width, fred.height);
+}
+
+function drawPaintDrops() {
+    ctx.fillStyle = 'red';
+    for (const drop of paintDrops) {
+        ctx.fillRect(drop.x, drop.y, drop.width, drop.height);
+    }
+}
+
+function updatePaintDrops() {
+    for (let i = paintDrops.length - 1; i >= 0; i--) {
+        paintDrops[i].y += dropSpeed;
+        if (paintDrops[i].y > canvas.height) {
+            paintDrops.splice(i, 1);
+            score++;
+        }
+    }
+}
+
+function checkCollisions() {
+    for (const drop of paintDrops) {
+        if (drop.x < fred.x + fred.width && 
+            drop.x + drop.width > fred.x && 
+            drop.y < fred.y + fred.height && 
+            drop.y + drop.height > fred.y) {
+            paintDrops = [];
+            lives--;
+            if (lives <= 0) {
+                alert('Game Over! Your score: ' + score);
+                document.location.reload();
+            }
+        }
+    }
+}
+
+function drawScoreAndLives() {
+    ctx.fillStyle = 'black';
+    ctx.fillText('Score: ' + score, 10, 20);
+    ctx.fillText('Lives: ' + lives, 10, 40);
+}
+
+window.addEventListener('mousemove', (event) => {
+    fred.x = event.clientX - fred.width / 2;
+});
+window.addEventListener('touchmove', (event) => {
+    const touch = event.touches[0];
+    fred.x = touch.clientX - fred.width / 2;
+});
+
+startGame();
+</script>
+</body>
+</html>
